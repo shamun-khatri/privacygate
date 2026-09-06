@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">PrivacyGate</string>
+    <string name="accessibility_service_label">PrivacyGate WhatsApp Protection</string>
+    <string name="accessibility_service_description">Locally inspects WhatsApp single-image send previews on-device to warn before oversharing sensitive information like phone numbers and emails. No data leaves your phone.</string>
+</resources>

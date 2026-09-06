@@ -14,6 +14,10 @@ activity-compose = { module = "androidx.activity:activity-compose", version.ref 
 coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 coroutines-play-services = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-play-services", version.ref = "coroutines" }
 mlkit-text = { module = "com.google.mlkit:text-recognition", version = "16.0.1" }
+mlkit-labeling = { module = "com.google.mlkit:image-labeling", version = "17.0.9" }
+mlkit-face = { module = "com.google.mlkit:face-detection", version = "16.1.7" }
+mlkit-segmentation = { module = "com.google.mlkit:segmentation-selfie", version = "16.0.0-beta6" }
+coil-compose = { module = "io.coil-kt:coil-compose", version = "2.7.0" }
 junit = { module = "junit:junit", version = "4.13.2" }
 
 [plugins]

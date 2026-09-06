@@ -1,10 +1,45 @@
+# Android and Gradle
 .tools/
 .gradle/
 .kotlin/
 local.properties
 **/build/
+**/build-*/
+*.apk
+*.aab
 *.iml
 .idea/
-captures/
 *.hprof
+
+# Local captures, generated media, and test output
+artifacts/
+captures/
+fixtures/
+*.png
+*.jpg
+*.jpeg
+*.webp
+
+# Device/UI inspection dumps
+/chat_dump*.xml
+/*dump*.xml
+/ui*.xml
+/uidump*.xml
+/window_dump.xml
+
+# Local rollback and research scratch files
+.privacygate-backup-*/
 .firecrawl/
+/opus_*
+/opus*.json
+/opus*.txt
+/opus*.md
+/latest_masked.*
+/masked_face.*
+/privacygate_masked_*.*
+/scripts/query_opus.py
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+*.swp

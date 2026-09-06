@@ -1,27 +1,53 @@
-# PrivacyGate Preflight
+# PrivacyGate
 
-Share what they need. Nothing more.
+PrivacyGate is a native Android privacy assistant that inspects outgoing image shares locally and helps mask sensitive information before it leaves the device.
 
-Native Android prototype for event-driven, local inspection of WhatsApp image previews.
-Development is currently at the foundation milestone. Protection is not yet implemented or device-verified.
+The current prototype is built and physically verified on an iQOO 15 running Android 16. It uses bundled on-device ML Kit models and deterministic validators; the app explicitly removes `android.permission.INTERNET` and disables Android backup.
+
+## Current features
+
+- PrivacyGate-first protection dashboard with a modern OLED Compose interface
+- WhatsApp and WhatsApp Business image-preview detection through an opt-in Accessibility service
+- Protected final-send flow for sensitive previews
+- Offline OCR and local detection for Aadhaar, PAN, payment cards, CVV, OTPs, phone numbers, email addresses, invoices, and medical documents
+- Aadhaar/card-aware smart masking with last-four preservation
+- Native **Share with PrivacyGate** preflight target with per-field mask controls
+- Local Prism Photos gallery with People, Docs & IDs, Vehicles, Food, Nature, and Screenshot categories
+- On-device photo detail inspection and Magic Studio prototype
+- Persistent gallery index for faster warm launches
+
+## Privacy model
+
+- No `INTERNET` permission
+- No cloud inference or analytics
+- Image scanning and masking happen on the device
+- Accessibility access is optional and must be enabled by the user in Android Settings
+- Android application backup is disabled
+
+## Stack
+
+- Kotlin 2.2.21
+- Jetpack Compose Material 3
+- Android Gradle Plugin 8.13.2 / Gradle 8.13
+- Compile and target SDK 36; minimum SDK 30
+- Bundled ML Kit OCR, image labeling, face detection, and selfie segmentation
+- Kotlin coroutines and Coil
 
 ## Build
 
-Pinned baseline: AGP 8.13.2, Gradle 8.13, Kotlin 2.2.21, Compose BOM 2025.10.01.
-Android compile/target SDK 36, minimum SDK 30. Java 17+ is required.
-
-With the project-local toolchain:
+The repository includes scripts that use the ignored project-local JDK and Android SDK under `.tools/`:
 
 ```powershell
-.\scripts\build.ps1
+& '.\scripts\android-env.ps1'
+.\gradlew.bat testDebugUnitTest assembleDebug --console=plain
 ```
 
-With an existing Android installation, configure `JAVA_HOME`, `ANDROID_HOME` (or `local.properties`) and run:
+Install on a connected Android device:
 
 ```powershell
-.\gradlew.bat assembleDebug
+adb -s <device-serial> install -r app\build\outputs\apk\debug\app-debug.apk
 ```
 
-Tools and caches in `.tools/` are ignored by Git. The app has no INTERNET permission and disables Android backup.
+## Architecture notes
 
-See [the delivery plan](docs/superpowers/plans/2026-09-05-privacygate-hackathon.md) for scope and physical-device gates.
+See [Robust Detection Architecture](docs/superpowers/plans/2026-09-06-robust-detection-architecture.md) for the planned full-resolution verdict-cache and picker identity-resolution design.

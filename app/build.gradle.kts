@@ -23,6 +23,9 @@ android {
     buildTypes {
         release { isMinifyEnabled = false }
     }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
@@ -32,5 +35,11 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.activity.compose)
     implementation(libs.coroutines.android)
+    implementation(libs.coroutines.play.services)
+    implementation(libs.mlkit.text)
+    implementation(libs.mlkit.labeling)
+    implementation(libs.mlkit.face)
+    implementation(libs.mlkit.segmentation)
+    implementation(libs.coil.compose)
     testImplementation(libs.junit)
 }
