@@ -25,11 +25,15 @@
 **Files:**
 - Create: `app/src/main/java/com/privacygate/app/ai/gemma/GemmaEnrichment.kt`
 - Create: `app/src/main/java/com/privacygate/app/ai/gemma/GemmaResponseParser.kt`
+- Create: `app/src/main/java/com/privacygate/app/ai/gemma/LayeredIndexMerger.kt`
 - Test: `app/src/test/java/com/privacygate/app/ai/gemma/GemmaResponseParserTest.kt`
+- Test: `app/src/test/java/com/privacygate/app/ai/gemma/LayeredIndexMergerTest.kt`
 
 - [ ] Write tests proving valid fenced/unfenced JSON is normalized and bounded.
 - [ ] Run the targeted test and confirm it fails because the parser is absent.
 - [ ] Implement the sealed status/result model and strict parser.
+- [ ] Write failing merger tests proving Gemma confirms/adds/conflicts with first-layer labels, can request review, and cannot downgrade an existing sensitive verdict.
+- [ ] Implement deterministic provenance and conservative merge rules.
 - [ ] Run the targeted test and all unit tests.
 
 ### Task 3: Add optional runtime boundary with TDD
@@ -83,7 +87,7 @@
 
 - [ ] Add callback and UI state tests where practical through pure state reducers.
 - [ ] Add a **Deep analyze** action to photo details with missing/loading/ready/failed states.
-- [ ] Load a bounded image, write an app-private temporary JPEG, invoke the enricher, merge successful metadata, persist the cache, and delete the temporary file.
+- [ ] Load a bounded image, write an app-private temporary JPEG, pass a value-free ML Kit summary to the enricher, merge successful re-evaluation metadata, persist the cache, and delete the temporary file.
 - [ ] Keep current detail, redaction, and Magic Studio actions available during every Gemma state.
 - [ ] Run all tests and assemble the debug APK.
 

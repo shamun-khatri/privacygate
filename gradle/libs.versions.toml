@@ -4,6 +4,7 @@ kotlin = "2.2.21"
 compose-bom = "2025.10.01"
 activity = "1.11.0"
 coroutines = "1.10.2"
+gson = "2.13.2"
 
 [libraries]
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
@@ -18,6 +19,7 @@ mlkit-labeling = { module = "com.google.mlkit:image-labeling", version = "17.0.9
 mlkit-face = { module = "com.google.mlkit:face-detection", version = "16.1.7" }
 mlkit-segmentation = { module = "com.google.mlkit:segmentation-selfie", version = "16.0.0-beta6" }
 coil-compose = { module = "io.coil-kt:coil-compose", version = "2.7.0" }
+gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
 junit = { module = "junit:junit", version = "4.13.2" }
 
 [plugins]

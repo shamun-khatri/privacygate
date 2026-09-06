@@ -2,13 +2,13 @@
 
 ## Goal
 
-Add an optional, fully local Gemma 4 E2B IT enrichment layer to PrivacyGate without changing the behavior or availability of the existing ML Kit privacy pipeline. Enrich one selected photo first, measure the physical iQOO 15 result, then permit background enrichment only after the model proves stable.
+Add an optional, fully local Gemma 4 E2B IT re-evaluation and enrichment layer to PrivacyGate without changing the availability of the existing ML Kit privacy pipeline. Re-evaluate one selected photo first, measure the physical iQOO 15 result, then permit background re-evaluation only after the model proves stable.
 
 ## Safety boundary
 
 ML Kit OCR, face detection, image labels, deterministic PII validators, send interception, and redaction remain the authoritative path. Gemma output adds captions, search labels, scene/activity labels, and privacy cues. A missing model, initialization failure, inference error, timeout, invalid JSON, or process restart must return an unavailable result and leave every existing feature usable.
 
-Gemma never declares an image safe and never supplies masking geometry. Exact Aadhaar, card, phone, and number-plate values are not persisted from Gemma output.
+Gemma never downgrades an actionable ML Kit/checksum result, never independently declares an image safe, and never supplies masking geometry. It may confirm ML Kit labels, add missing labels, or upgrade a low-risk result to `NEEDS_REVIEW`. Exact Aadhaar, card, phone, and number-plate values are not persisted from Gemma output.
 
 ## Model and runtime
 
@@ -37,6 +37,10 @@ Each indexed photo retains the immediate ML Kit fields and may gain a `GemmaEnri
 - `vehiclePresent`
 - `registrationPlateVisible`
 - model version and enrichment timestamp
+- ML Kit labels that Gemma confirmed
+- labels added by Gemma
+- labels where the two layers conflict
+- combined review state
 
 The cache stores this structured metadata but no generated transcription or raw sensitive values. Cache validity includes the MediaStore ID, modification date, and enrichment schema/model version.
 
@@ -48,10 +52,11 @@ The protection dashboard adds a persisted `VEHICLE_PLATE` category toggle. When 
 2. Existing ML Kit indexing publishes labels and the privacy verdict immediately.
 3. A user opens the photo detail and requests deep analysis.
 4. PrivacyGate checks the model file and initializes a process-wide engine off the UI thread.
-5. A downscaled temporary JPEG and a strict JSON prompt are passed as multimodal content.
+5. A downscaled temporary JPEG and a redacted summary of first-layer categories/labels are passed with a strict JSON prompt. Raw detected values are excluded.
 6. The response parser accepts only bounded JSON fields and normalizes/deduplicates labels.
-7. The gallery merges enrichment labels with existing ML Kit metadata and saves the structured cache.
-8. Temporary image files are deleted in `finally` blocks.
+7. A deterministic merger records confirmed, added, and conflicting labels. The combined policy is a conservative union: Gemma can request review but cannot remove an existing sensitive verdict.
+8. The gallery saves the merged structured cache.
+9. Temporary image files are deleted in `finally` blocks.
 
 Background enrichment remains disabled until the one-photo benchmark passes on the physical device.
 

@@ -41,5 +41,6 @@ dependencies {
     implementation(libs.mlkit.face)
     implementation(libs.mlkit.segmentation)
     implementation(libs.coil.compose)
+    implementation(libs.gson)
     testImplementation(libs.junit)
 }

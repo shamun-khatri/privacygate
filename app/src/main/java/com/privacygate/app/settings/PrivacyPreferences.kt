@@ -14,7 +14,8 @@ enum class SensitivityCategory(val displayName: String, val description: String,
     INVOICE_RECEIPT("Bills & Invoices", "Tax invoices, payment receipts, order details", "🧾"),
     CONTACT_INFO("Phone & Email", "Personal mobile numbers and email addresses", "📞"),
     FACE_PORTRAIT("Faces & People", "Detect faces of women, kids, and personal portraits", "👤"),
-    NSFW_SENSITIVE("Private & Sensitive Media", "Detect sensitive personal or private photos", "🔞")
+    NSFW_SENSITIVE("Private & Sensitive Media", "Detect sensitive personal or private photos", "🔞"),
+    VEHICLE_PLATE("Vehicle Number Plates", "Warn when a readable registration plate is visible", "🚘")
 }
 
 enum class SensitivityLevel(val displayName: String, val minRiskScore: Float) {
