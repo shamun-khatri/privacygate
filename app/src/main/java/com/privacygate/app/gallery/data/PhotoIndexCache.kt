@@ -1,6 +1,7 @@
 package com.privacygate.app.gallery.data
 
 import android.content.Context
+import com.privacygate.app.ai.gemma.GemmaEnrichment
 import com.privacygate.app.gallery.model.GalleryPhoto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -17,8 +18,9 @@ data class CachedPhotoMeta(
     val isSelfie: Boolean,
     val isSensitiveDocument: Boolean,
     val documentType: String?,
-    val extractedText: String,
-    val segments: Set<String>
+    val segments: Set<String>,
+    val gemmaEnrichment: GemmaEnrichment?,
+    val gemmaLatencyMs: Long?
 )
 
 class PhotoIndexCache(private val context: Context) {
@@ -40,33 +42,18 @@ class PhotoIndexCache(private val context: Context) {
                 val obj = photosArray.getJSONObject(i)
                 val id = obj.getLong("id")
 
-                val labelsList = mutableListOf<String>()
-                val labelsArr = obj.optJSONArray("labels")
-                if (labelsArr != null) {
-                    for (j in 0 until labelsArr.length()) {
-                        labelsList.add(labelsArr.getString(j))
-                    }
-                }
-
-                val segmentsSet = mutableSetOf<String>()
-                val segArr = obj.optJSONArray("segments")
-                if (segArr != null) {
-                    for (j in 0 until segArr.length()) {
-                        segmentsSet.add(segArr.getString(j))
-                    }
-                }
-
                 val meta = CachedPhotoMeta(
                     id = id,
-                    labels = labelsList,
+                    labels = obj.stringList("labels"),
                     faceCount = obj.optInt("faceCount", 0),
                     hasPerson = obj.optBoolean("hasPerson", false),
                     isPortrait = obj.optBoolean("isPortrait", false),
                     isSelfie = obj.optBoolean("isSelfie", false),
                     isSensitiveDocument = obj.optBoolean("isSensitiveDocument", false),
-                    documentType = if (obj.has("documentType")) obj.getString("documentType") else null,
-                    extractedText = obj.optString("extractedText", ""),
-                    segments = segmentsSet
+                    documentType = obj.nullableString("documentType"),
+                    segments = obj.stringList("segments").toSet(),
+                    gemmaEnrichment = obj.optJSONObject("gemma")?.toGemmaEnrichment(),
+                    gemmaLatencyMs = obj.optLong("gemmaLatencyMs").takeIf { obj.has("gemmaLatencyMs") }
                 )
                 result[id] = meta
             }
@@ -94,13 +81,14 @@ class PhotoIndexCache(private val context: Context) {
                     if (p.documentType != null) {
                         put("documentType", p.documentType)
                     }
-                    put("extractedText", p.extractedText.take(500))
                     put("segments", JSONArray(p.segments.toList()))
+                    p.gemmaEnrichment?.let { put("gemma", it.toJson()) }
+                    p.gemmaLatencyMs?.let { put("gemmaLatencyMs", it) }
                 }
                 photosArray.put(obj)
             }
 
-            root.put("version", 1)
+            root.put("version", 2)
             root.put("updatedAt", System.currentTimeMillis())
             root.put("photos", photosArray)
 
@@ -109,4 +97,50 @@ class PhotoIndexCache(private val context: Context) {
             e.printStackTrace()
         }
     }
+
+    private fun JSONObject.toGemmaEnrichment() = GemmaEnrichment(
+        caption = optString("caption", ""),
+        objects = stringList("objects"),
+        scenes = stringList("scenes"),
+        activities = stringList("activities"),
+        searchLabels = stringList("searchLabels"),
+        privacyCues = stringList("privacyCues"),
+        vehiclePresent = optBoolean("vehiclePresent", false),
+        registrationPlateVisible = optBoolean("registrationPlateVisible", false),
+        confirmedMlKitLabels = stringList("confirmedMlKitLabels"),
+        addedLabels = stringList("addedLabels"),
+        conflictingLabels = stringList("conflictingLabels"),
+        needsReview = optBoolean("needsReview", false),
+        modelVersion = optString("modelVersion", GemmaEnrichment.MODEL_VERSION),
+        analyzedAtEpochMs = optLong("analyzedAtEpochMs", 0L)
+    )
+
+    private fun GemmaEnrichment.toJson() = JSONObject().apply {
+        put("caption", caption)
+        put("objects", JSONArray(objects))
+        put("scenes", JSONArray(scenes))
+        put("activities", JSONArray(activities))
+        put("searchLabels", JSONArray(searchLabels))
+        put("privacyCues", JSONArray(privacyCues))
+        put("vehiclePresent", vehiclePresent)
+        put("registrationPlateVisible", registrationPlateVisible)
+        put("confirmedMlKitLabels", JSONArray(confirmedMlKitLabels))
+        put("addedLabels", JSONArray(addedLabels))
+        put("conflictingLabels", JSONArray(conflictingLabels))
+        put("needsReview", needsReview)
+        put("modelVersion", modelVersion)
+        put("analyzedAtEpochMs", analyzedAtEpochMs)
+    }
+
+    private fun JSONObject.stringList(key: String): List<String> {
+        val array = optJSONArray(key) ?: return emptyList()
+        return buildList {
+            for (index in 0 until array.length()) {
+                array.optString(index).takeIf { it.isNotBlank() }?.let(::add)
+            }
+        }
+    }
+
+    private fun JSONObject.nullableString(key: String): String? =
+        optString(key, "").takeIf { it.isNotBlank() }
 }

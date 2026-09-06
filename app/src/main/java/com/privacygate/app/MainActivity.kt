@@ -1,10 +1,15 @@
 package com.privacygate.app
 
 import android.content.Intent
+import android.database.ContentObserver
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.provider.MediaStore
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -17,6 +22,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import com.privacygate.app.ai.PrivacyInferenceEngine
+import com.privacygate.app.ai.gemma.GemmaEnrichmentResult
+import com.privacygate.app.ai.gemma.GemmaEnrichmentStatus
+import com.privacygate.app.ai.gemma.GemmaModelAvailability
+import com.privacygate.app.ai.gemma.GemmaProcessClient
+import com.privacygate.app.ai.gemma.MlKitIndexSummary
 import com.privacygate.app.gallery.ai.LocalVisionIndexer
 import com.privacygate.app.gallery.data.MediaRepository
 import com.privacygate.app.gallery.data.PhotoIndexCache
@@ -27,9 +37,13 @@ import com.privacygate.app.protection.PrivacyGateState
 import com.privacygate.app.redaction.RedactionEngine
 import com.privacygate.app.sentinel.ui.SentinelScreen
 import com.privacygate.app.settings.PrivacyPreferences
+import com.privacygate.app.settings.SensitivityCategory
 import com.privacygate.app.studio.ui.MagicStudioScreen
 import com.privacygate.app.ui.AppTabIcon
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -44,13 +58,24 @@ class MainActivity : ComponentActivity() {
     private lateinit var privacyPreferences: PrivacyPreferences
     private lateinit var mediaRepository: MediaRepository
     private lateinit var photoIndexCache: PhotoIndexCache
+    private lateinit var gemmaProcessClient: GemmaProcessClient
     private val visionIndexer = LocalVisionIndexer()
+
+    private val photosState = mutableStateListOf<GalleryPhoto>()
+    private val isIndexingState = mutableStateOf(false)
+    private val indexedCountState = mutableIntStateOf(0)
+    private val totalPhotoCountState = mutableIntStateOf(0)
+
+    private var indexingJob: Job? = null
+    private var contentObserver: ContentObserver? = null
+    private var debounceJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         privacyPreferences = PrivacyPreferences(this)
         mediaRepository = MediaRepository(this)
         photoIndexCache = PhotoIndexCache(this)
+        gemmaProcessClient = GemmaProcessClient(this)
 
         handleShareIntent(intent)
 
@@ -59,74 +84,11 @@ class MainActivity : ComponentActivity() {
             val prefsState by privacyPreferences.state.collectAsState()
 
             var selectedTab by remember { mutableStateOf(MainTab.HOME) }
-            val photos = remember { mutableStateListOf<GalleryPhoto>() }
-            var isIndexing by remember { mutableStateOf(false) }
-            var indexedCount by remember { mutableIntStateOf(0) }
-            var totalPhotoCount by remember { mutableIntStateOf(0) }
+            val photos = photosState
+            val isIndexing by remember { isIndexingState }
+            val indexedCount by remember { indexedCountState }
+            val totalPhotoCount by remember { totalPhotoCountState }
             var activeStudioPhoto by remember { mutableStateOf<GalleryPhoto?>(null) }
-
-            // Load device photos & start background indexing
-            LaunchedEffect(Unit) {
-                val loaded = mediaRepository.fetchGalleryPhotos()
-                totalPhotoCount = loaded.size
-
-                val cached = photoIndexCache.loadCache()
-
-                // Merge cached results instantly (< 5ms)
-                val merged = loaded.map { photo ->
-                    val meta = cached[photo.id]
-                    if (meta != null) {
-                        photo.copy(
-                            labels = meta.labels,
-                            faceCount = meta.faceCount,
-                            hasPerson = meta.hasPerson,
-                            isPortrait = meta.isPortrait,
-                            isSelfie = meta.isSelfie,
-                            isSensitiveDocument = meta.isSensitiveDocument,
-                            documentType = meta.documentType,
-                            extractedText = meta.extractedText,
-                            isIndexed = true,
-                            segments = meta.segments
-                        )
-                    } else {
-                        photo
-                    }
-                }
-
-                photos.clear()
-                photos.addAll(merged)
-                indexedCount = merged.count { it.isIndexed }
-
-                // Index remaining unindexed photos progressively
-                val unindexed = merged.filter { !it.isIndexed }
-                if (unindexed.isNotEmpty()) {
-                    isIndexing = true
-                    withContext(Dispatchers.Default) {
-                        var processedSinceLastSave = 0
-                        for (photo in unindexed) {
-                            val photoUri = photo.uri ?: continue
-                            val bmp = mediaRepository.loadDownscaledBitmap(photoUri, maxDimension = 512)
-                            if (bmp != null) {
-                                val indexed = visionIndexer.indexPhoto(photo, bmp)
-                                val listIdx = photos.indexOfFirst { it.id == photo.id }
-                                if (listIdx != -1) {
-                                    photos[listIdx] = indexed
-                                }
-                                indexedCount++
-                                processedSinceLastSave++
-                                bmp.recycle()
-
-                                if (processedSinceLastSave >= 10) {
-                                    photoIndexCache.saveCache(photos.toList())
-                                    processedSinceLastSave = 0
-                                }
-                            }
-                        }
-                        photoIndexCache.saveCache(photos.toList())
-                    }
-                    isIndexing = false
-                }
-            }
 
             MaterialTheme(
                 colorScheme = darkColorScheme(
@@ -198,6 +160,8 @@ class MainActivity : ComponentActivity() {
                                     isIndexing = isIndexing,
                                     indexedCount = indexedCount,
                                     totalCount = photos.size,
+                                    plateWarningsEnabled = SensitivityCategory.VEHICLE_PLATE in prefsState.enabledCategories,
+                                    onRefresh = { syncPhotos() },
                                     onOpenInMagicStudio = { photo ->
                                         activeStudioPhoto = photo
                                         selectedTab = MainTab.STUDIO
@@ -213,6 +177,63 @@ class MainActivity : ComponentActivity() {
                                                     RedactionEngine.saveAndShareRedacted(this@MainActivity, bmp, scan.regions)
                                                 }
                                                 bmp.recycle()
+                                            }
+                                        }
+                                    },
+                                    onDeepAnalyze = { requestedPhoto ->
+                                        val photoIndex = photos.indexOfFirst { it.id == requestedPhoto.id }
+                                        if (photoIndex >= 0) {
+                                            val currentPhoto = photos[photoIndex]
+                                            when (gemmaProcessClient.modelAvailability()) {
+                                                is GemmaModelAvailability.Ready -> {
+                                                    photos[photoIndex] = currentPhoto.copy(
+                                                        gemmaStatus = GemmaEnrichmentStatus.RUNNING
+                                                    )
+                                                    lifecycleScope.launch {
+                                                        val input = currentPhoto.uri?.let {
+                                                            prepareGemmaImage(it, currentPhoto.id)
+                                                        }
+                                                        val result = if (input == null) {
+                                                            GemmaEnrichmentResult.Failed("Could not prepare photo")
+                                                        } else {
+                                                            try {
+                                                                gemmaProcessClient.reEvaluate(
+                                                                    image = input,
+                                                                    summary = MlKitIndexSummary(
+                                                                        labels = currentPhoto.labels,
+                                                                        segments = currentPhoto.segments,
+                                                                        documentType = currentPhoto.documentType,
+                                                                        isSensitiveDocument = currentPhoto.isSensitiveDocument
+                                                                    )
+                                                                )
+                                                            } finally {
+                                                                input.delete()
+                                                            }
+                                                        }
+
+                                                        val latestIndex = photos.indexOfFirst { it.id == currentPhoto.id }
+                                                        if (latestIndex >= 0) {
+                                                            val latest = photos[latestIndex]
+                                                            photos[latestIndex] = when (result) {
+                                                                is GemmaEnrichmentResult.Ready -> latest.copy(
+                                                                    gemmaStatus = GemmaEnrichmentStatus.READY,
+                                                                    gemmaEnrichment = result.enrichment,
+                                                                    gemmaLatencyMs = result.latencyMs
+                                                                )
+                                                                is GemmaEnrichmentResult.Unavailable -> latest.copy(
+                                                                    gemmaStatus = GemmaEnrichmentStatus.UNAVAILABLE
+                                                                )
+                                                                is GemmaEnrichmentResult.Failed -> latest.copy(
+                                                                    gemmaStatus = GemmaEnrichmentStatus.FAILED
+                                                                )
+                                                            }
+                                                            photoIndexCache.saveCache(photos.toList())
+                                                        }
+                                                    }
+                                                }
+                                                else -> photos[photoIndex] = currentPhoto.copy(
+                                                    gemmaStatus = GemmaEnrichmentStatus.UNAVAILABLE
+                                                )
                                             }
                                         }
                                     }
@@ -287,8 +308,169 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private suspend fun prepareGemmaImage(uri: Uri, photoId: Long): java.io.File? =
+        withContext(Dispatchers.IO) {
+            val bitmap = mediaRepository.loadDownscaledBitmap(uri, maxDimension = 896)
+                ?: return@withContext null
+            val directory = java.io.File(cacheDir, "gemma-inputs").apply { mkdirs() }
+            val output = java.io.File(directory, "photo-$photoId.jpg")
+            val saved = output.outputStream().use { stream ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, stream)
+            }
+            bitmap.recycle()
+            output.takeIf { saved && it.isFile && it.length() > 0L }
+        }
+
+    fun syncPhotos() {
+        lifecycleScope.launch {
+            val loaded = mediaRepository.fetchGalleryPhotos()
+            totalPhotoCountState.intValue = loaded.size
+
+            val cached = photoIndexCache.loadCache()
+            val existingById = photosState.associateBy { it.id }
+
+            val merged = loaded.map { photo ->
+                val existing = existingById[photo.id]
+                if (existing != null && existing.isIndexed) {
+                    existing
+                } else {
+                    val meta = cached[photo.id]
+                    if (meta != null) {
+                        photo.copy(
+                            labels = meta.labels,
+                            faceCount = meta.faceCount,
+                            hasPerson = meta.hasPerson,
+                            isPortrait = meta.isPortrait,
+                            isSelfie = meta.isSelfie,
+                            isSensitiveDocument = meta.isSensitiveDocument,
+                            documentType = meta.documentType,
+                            extractedText = "",
+                            isIndexed = true,
+                            segments = meta.segments,
+                            gemmaStatus = if (meta.gemmaEnrichment != null) GemmaEnrichmentStatus.READY else GemmaEnrichmentStatus.NOT_REQUESTED,
+                            gemmaEnrichment = meta.gemmaEnrichment,
+                            gemmaLatencyMs = meta.gemmaLatencyMs
+                        )
+                    } else {
+                        photo
+                    }
+                }
+            }
+
+            if (photosState.size != merged.size || photosState.map { it.id } != merged.map { it.id }) {
+                photosState.clear()
+                photosState.addAll(merged)
+            } else {
+                for (i in merged.indices) {
+                    if (photosState[i] != merged[i]) {
+                        photosState[i] = merged[i]
+                    }
+                }
+            }
+            indexedCountState.intValue = photosState.count { it.isIndexed }
+
+            val unindexed = photosState.filter { !it.isIndexed }
+            android.util.Log.i("PrivacyGate", "syncPhotos: total=${photosState.size}, indexed=${indexedCountState.intValue}, unindexed=${unindexed.size}")
+
+            if (unindexed.isNotEmpty()) {
+                indexingJob?.cancel()
+                indexingJob = lifecycleScope.launch(Dispatchers.Default) {
+                    isIndexingState.value = true
+                    try {
+                        var processedSinceLastSave = 0
+                        for (photo in unindexed) {
+                            if (!isActive) break
+                            android.util.Log.i("PrivacyGate", "Indexing photo id=${photo.id}, name=${photo.name}")
+                            val photoUri = photo.uri
+                            val bmp = if (photoUri != null) {
+                                mediaRepository.loadDownscaledBitmap(photoUri, maxDimension = 512)
+                            } else null
+
+                            val indexed = if (bmp != null) {
+                                try {
+                                    visionIndexer.indexPhoto(photo, bmp)
+                                } finally {
+                                    bmp.recycle()
+                                }
+                            } else {
+                                photo.copy(isIndexed = true)
+                            }
+
+                            withContext(Dispatchers.Main) {
+                                val listIdx = photosState.indexOfFirst { it.id == photo.id }
+                                if (listIdx != -1) {
+                                    photosState[listIdx] = indexed
+                                }
+                                indexedCountState.intValue = photosState.count { it.isIndexed }
+                            }
+                            processedSinceLastSave++
+
+                            if (processedSinceLastSave >= 5) {
+                                photoIndexCache.saveCache(photosState.toList())
+                                processedSinceLastSave = 0
+                            }
+                        }
+                        photoIndexCache.saveCache(photosState.toList())
+                        android.util.Log.i("PrivacyGate", "Finished indexing unindexed photos. Cache saved.")
+                    } finally {
+                        isIndexingState.value = false
+                    }
+                }
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        registerMediaObserver()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        syncPhotos()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        unregisterMediaObserver()
+    }
+
+    private fun registerMediaObserver() {
+        if (contentObserver != null) return
+        contentObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean, uri: Uri?) {
+                debounceJob?.cancel()
+                debounceJob = lifecycleScope.launch {
+                    delay(400)
+                    syncPhotos()
+                }
+            }
+        }
+        try {
+            contentResolver.registerContentObserver(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                true,
+                contentObserver!!
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun unregisterMediaObserver() {
+        contentObserver?.let {
+            try {
+                contentResolver.unregisterContentObserver(it)
+            } catch (_: Exception) {}
+            contentObserver = null
+        }
+        debounceJob?.cancel()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        unregisterMediaObserver()
+        indexingJob?.cancel()
         visionIndexer.close()
     }
 }

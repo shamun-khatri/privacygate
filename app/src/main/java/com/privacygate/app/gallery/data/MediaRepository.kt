@@ -40,30 +40,35 @@ class MediaRepository(private val context: Context) {
                 val bucketCol = c.getColumnIndex(MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
 
                 while (c.moveToNext()) {
-                    val id = c.getLong(idCol)
-                    val name = c.getString(nameCol) ?: "IMG_$id"
-                    val dateAdded = c.getLong(dateCol)
-                    val size = c.getLong(sizeCol)
-                    val bucketName = if (bucketCol != -1) c.getString(bucketCol) else null
-                    val contentUri = ContentUris.withAppendedId(
-                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                        id
-                    )
-
-                    photos.add(
-                        GalleryPhoto(
-                            id = id,
-                            uri = contentUri,
-                            name = name,
-                            dateAdded = dateAdded,
-                            size = size,
-                            bucketName = bucketName
+                    try {
+                        val id = c.getLong(idCol)
+                        val name = if (!c.isNull(nameCol)) c.getString(nameCol) else "IMG_$id"
+                        val dateAdded = if (!c.isNull(dateCol)) c.getLong(dateCol) else 0L
+                        val size = if (!c.isNull(sizeCol)) c.getLong(sizeCol) else 0L
+                        val bucketName = if (bucketCol != -1 && !c.isNull(bucketCol)) c.getString(bucketCol) else null
+                        val contentUri = ContentUris.withAppendedId(
+                            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                            id
                         )
-                    )
+
+                        photos.add(
+                            GalleryPhoto(
+                                id = id,
+                                uri = contentUri,
+                                name = name,
+                                dateAdded = dateAdded,
+                                size = size,
+                                bucketName = bucketName
+                            )
+                        )
+                    } catch (rowEx: Exception) {
+                        android.util.Log.w("PrivacyGate", "Skipping bad row in MediaStore", rowEx)
+                    }
                 }
             }
+            android.util.Log.i("PrivacyGate", "fetchGalleryPhotos loaded ${photos.size} photos from MediaStore")
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("PrivacyGate", "Error querying MediaStore", e)
         }
         photos
     }

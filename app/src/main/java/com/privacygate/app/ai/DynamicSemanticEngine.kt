@@ -65,6 +65,7 @@ class DynamicSemanticEngine {
     private val contextualMedicalRegex = Regex("(?i)\\b(rx\\b|patient|doctor|dosage|hospital|clinic|treatment|tablet|capsule|mg\\b|dr\\.)")
     private val definiteInvoiceRegex = Regex("(?i)\\b(tax invoice|bill to|gstin\\b|invoice no|invoice #|balance due|total amount|grand total)\\b")
     private val contextualInvoiceRegex = Regex("(?i)\\b(invoice|subtotal|amount due|order total|qty\\b|rate\\b|hsn\\b|sgst|cgst|igst)\\b")
+    private val vehiclePlateRegex = Regex("(?i)\\b(?:[A-Z]{2}[ -]?[0-9]{1,2}[ -]?[A-Z]{1,3}[ -]?[0-9]{4}|[A-Z]{2}[0-9]{2}[A-Z]{1,2}[0-9]{4})\\b")
 
     fun validateAadhaar(rawNumber: String): Boolean {
         val digits = rawNumber.filter { it.isDigit() }
@@ -269,6 +270,15 @@ class DynamicSemanticEngine {
                     highestScore = maxOf(highestScore, 0.75f)
                 }
             }
+
+            // 8. Vehicle Registration Plates
+            if (prefs.enabledCategories.contains(SensitivityCategory.VEHICLE_PLATE)) {
+                for (match in vehiclePlateRegex.findAll(line)) {
+                    categories.add(SensitivityCategory.VEHICLE_PLATE)
+                    regions.add(DetectedRegion(box, SensitivityCategory.VEHICLE_PLATE, "Vehicle Registration Plate", match.value))
+                    highestScore = maxOf(highestScore, 0.85f)
+                }
+            }
         }
 
         val docType = when {
@@ -280,6 +290,7 @@ class DynamicSemanticEngine {
             categories.contains(SensitivityCategory.MEDICAL_HEALTH) -> "Medical Report / Prescription"
             categories.contains(SensitivityCategory.INVOICE_RECEIPT) -> "Invoice / Financial Bill"
             categories.contains(SensitivityCategory.CONTACT_INFO) -> "Contact Details"
+            categories.contains(SensitivityCategory.VEHICLE_PLATE) -> "Vehicle Number Plate"
             else -> null
         }
 

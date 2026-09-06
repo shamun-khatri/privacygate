@@ -118,6 +118,16 @@ class LocalVisionIndexer(
                 detectedSegments.add("Vehicles")
             }
 
+            if (analysis.detectedCategories.contains(com.privacygate.app.settings.SensitivityCategory.VEHICLE_PLATE) ||
+                labels.any {
+                    it.contains("plate", ignoreCase = true) ||
+                    it.equals("Vehicle registration plate", ignoreCase = true) ||
+                    it.equals("License plate", ignoreCase = true)
+                }
+            ) {
+                detectedSegments.add("Plates")
+            }
+
             if (labels.any {
                 it.equals("Food", ignoreCase = true) ||
                 it.equals("Meal", ignoreCase = true) ||

@@ -1,10 +1,11 @@
 [versions]
 agp = "8.13.2"
-kotlin = "2.2.21"
+kotlin = "2.4.0"
 compose-bom = "2025.10.01"
 activity = "1.11.0"
 coroutines = "1.10.2"
 gson = "2.13.2"
+litertlm = "0.17.0"
 
 [libraries]
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
@@ -20,6 +21,7 @@ mlkit-face = { module = "com.google.mlkit:face-detection", version = "16.1.7" }
 mlkit-segmentation = { module = "com.google.mlkit:segmentation-selfie", version = "16.0.0-beta6" }
 coil-compose = { module = "io.coil-kt:coil-compose", version = "2.7.0" }
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
+litertlm-android = { module = "com.google.ai.edge.litertlm:litertlm-android", version.ref = "litertlm" }
 junit = { module = "junit:junit", version = "4.13.2" }
 
 [plugins]

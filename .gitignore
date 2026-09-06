@@ -12,6 +12,7 @@ local.properties
 *.hprof
 
 # Local captures, generated media, and test output
+.artifact-build/
 artifacts/
 captures/
 fixtures/

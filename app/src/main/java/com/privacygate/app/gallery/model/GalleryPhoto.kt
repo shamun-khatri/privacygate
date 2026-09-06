@@ -1,12 +1,15 @@
 package com.privacygate.app.gallery.model
 
 import android.net.Uri
+import com.privacygate.app.ai.gemma.GemmaEnrichment
+import com.privacygate.app.ai.gemma.GemmaEnrichmentStatus
 
 enum class SmartCategory(val label: String, val icon: String) {
     ALL("All", "🖼️"),
     PEOPLE("People", "👥"),
     DOCUMENTS("Documents", "🛡️"),
     VEHICLES("Vehicles", "🚗"),
+    PLATES("Number Plates", "🚘"),
     FOOD("Food", "🍽️"),
     NATURE("Nature", "🌿"),
     SCREENSHOTS("Screenshots", "📱")
@@ -28,7 +31,10 @@ data class GalleryPhoto(
     val documentType: String? = null,
     val extractedText: String = "",
     val isIndexed: Boolean = false,
-    val segments: Set<String> = emptySet()
+    val segments: Set<String> = emptySet(),
+    val gemmaStatus: GemmaEnrichmentStatus = GemmaEnrichmentStatus.NOT_REQUESTED,
+    val gemmaEnrichment: GemmaEnrichment? = null,
+    val gemmaLatencyMs: Long? = null
 ) {
     fun matchesQuery(query: String): Boolean {
         if (query.isBlank()) return true
@@ -39,6 +45,7 @@ data class GalleryPhoto(
                 extractedText.lowercase().contains(q) ||
                 (documentType?.lowercase()?.contains(q) == true) ||
                 segments.any { it.lowercase().contains(q) } ||
+                (gemmaEnrichment?.allSearchableText()?.lowercase()?.contains(q) == true) ||
                 ((q == "face" || q == "people" || q == "person" || q == "portrait") && (faceCount > 0 || hasPerson)) ||
                 ((q == "document" || q == "id" || q == "doc" || q == "aadhaar" || q == "invoice") && (isSensitiveDocument || documentType != null)) ||
                 (q == "screenshot" && (bucketName?.contains("screenshot", ignoreCase = true) == true || name.contains("screenshot", ignoreCase = true)))
@@ -57,7 +64,8 @@ data class GalleryPhoto(
                 it.equals("Automobile", ignoreCase = true) ||
                 it.equals("Automotive exterior", ignoreCase = true) ||
                 it.equals("Bicycle", ignoreCase = true)
-            }
+            } || gemmaEnrichment?.vehiclePresent == true
+            SmartCategory.PLATES -> segments.contains("Plates") || segments.contains("Number Plates") || labels.any { it.contains("plate", ignoreCase = true) } || gemmaEnrichment?.registrationPlateVisible == true
             SmartCategory.FOOD -> segments.contains("Food") || labels.any {
                 it.equals("Food", ignoreCase = true) ||
                 it.equals("Meal", ignoreCase = true) ||
